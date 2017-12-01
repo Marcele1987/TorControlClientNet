@@ -16,6 +16,9 @@ namespace TorControlClientNet
         private TcpClient _tcpClient;
         private NetworkStream _networkStream;
         private CancellationTokenSource _cancellationTokenSource;
+        private bool _isAuthenticating;
+        private bool _isAuthenticated;
+        private bool _isListenerRunning;
 
         public event EventHandler OnConnect;
         public event EventHandler OnDisconnect;
@@ -25,7 +28,7 @@ namespace TorControlClientNet
         public event EventHandler OnAsyncEvent;
         public event EventHandler OnCommandData;
 
-        public TorControlClient(string ip,int port)
+        public TorControlClient(string ip, int port)
         {
             _ip = ip;
             _port = port;
@@ -57,68 +60,21 @@ namespace TorControlClientNet
 
                 _cancellationTokenSource.Cancel();
                 _tcpClient.Close();
+
+                _isListenerRunning = false;
+                _isAuthenticated = false;
             }
 
             OnDisconnect?.Invoke(this, new EventArgs());
         }
 
- 
-        private bool isAuthenticating;
-
-        public void StartListener(string password = "")
+        public void Authenticate(string password = "")
         {
-            _cancellationTokenSource = new CancellationTokenSource();
+            startListener();
 
-            Task.Run(() => this.Read(_cancellationTokenSource.Token));
-
-            isAuthenticating = true;
+            _isAuthenticating = true;
             var data = Encoding.ASCII.GetBytes(string.IsNullOrEmpty(password) ? TorCommands.AUTHENTICATE.ToString() : $"{TorCommands.AUTHENTICATE.ToString()} \"{password}\"" + Environment.NewLine);
             writeToStream(data);
-        }
-
-        private void Read(CancellationToken token)
-        {
-            using (var reader = new StreamReader(_networkStream, Encoding.UTF8))
-            {
-                string line = "";
-                while ((line = reader.ReadLine()) != null && !token.IsCancellationRequested)
-                {
-                    if (line.Contains(TorStatusCodes.Tor_Ok))
-                    {
-                        if(isAuthenticating)
-                        {
-                            OnSuccessfullAuthentication?.Invoke(this, new EventArgs());
-                            isAuthenticating = false;
-                        }
-                        else if(line.Contains("OK"))
-                        {
-                            OnCommandOk?.Invoke(this, new EventArgs());
-                        }
-                        else
-                        {
-                            OnCommandData?.Invoke(this, new TorEventArgs()
-                            {
-                                EventName = line,
-                                Values = new Dictionary<string, string>()
-                            });
-                        }
-
-                    }
-                    else if(line.Contains(TorStatusCodes.Tor_BadAuthentication))
-                    {
-                        OnBadAuthentication?.Invoke(this, new EventArgs());
-                        isAuthenticating = false;
-                    }
-                    else if(line.Contains(TorStatusCodes.Tor_AsynchronousEvent))
-                    {
-                        OnAsyncEvent?.Invoke(this, new TorEventArgs()
-                        {
-                            EventName = line,
-                            Values = new Dictionary<string, string>()
-                        });
-                    }
-                }
-            }
         }
 
         public void SendCommand(TorCommands command, string keyword = "")
@@ -129,6 +85,11 @@ namespace TorControlClientNet
 
         private void writeToStream(byte[] data)
         {
+            if (!_tcpClient?.Connected ?? false)
+            {
+                throw new Exception("Client is not connected. Call method connect first.");
+            }
+
             if (_networkStream.CanWrite)
             {
                 _networkStream.Write(data, 0, data.Length);
@@ -138,5 +99,77 @@ namespace TorControlClientNet
                 throw new Exception("NetworkStream closed");
             }
         }
+
+        private void startListener()
+        {
+            if (_isListenerRunning)
+                return;
+
+            if (!_tcpClient?.Connected ?? false)
+            {
+                throw new Exception("Client is not connected. Call method connect first.");
+            }
+
+            _cancellationTokenSource = new CancellationTokenSource();
+
+            Task.Run(() => readStream(_cancellationTokenSource.Token));
+
+            _isListenerRunning = true;
+        }
+
+        private void readStream(CancellationToken token)
+        {
+            try
+            {
+                using (var reader = new StreamReader(_networkStream, Encoding.UTF8))
+                {
+                    string line = "";
+                    while ((line = reader.ReadLine()) != null && !token.IsCancellationRequested)
+                    {
+                        if (line.Contains(TorStatusCodes.Tor_Ok))
+                        {
+                            if (_isAuthenticating)
+                            {
+                                OnSuccessfullAuthentication?.Invoke(this, new EventArgs());
+                                _isAuthenticating = false;
+                                _isAuthenticated = true;
+                            }
+                            else if (line.Contains("OK"))
+                            {
+                                OnCommandOk?.Invoke(this, new EventArgs());
+                            }
+                            else
+                            {
+                                OnCommandData?.Invoke(this, new TorEventArgs()
+                                {
+                                    EventName = line,
+                                    Values = new Dictionary<string, string>()
+                                });
+                            }
+
+                        }
+                        else if (line.Contains(TorStatusCodes.Tor_BadAuthentication))
+                        {
+                            OnBadAuthentication?.Invoke(this, new EventArgs());
+                            _isAuthenticating = false;
+                        }
+                        else if (line.Contains(TorStatusCodes.Tor_AsynchronousEvent))
+                        {
+                            OnAsyncEvent?.Invoke(this, new TorEventArgs()
+                            {
+                                EventName = line,
+                                Values = new Dictionary<string, string>()
+                            });
+                        }
+                    }
+                }
+            }
+            catch (Exception exc)
+            {
+                _isListenerRunning = false;
+            }
+
+        }
+
     }
 }

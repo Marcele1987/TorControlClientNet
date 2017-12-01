@@ -18,10 +18,10 @@ namespace TorControlClientNet
 
         void Connect();
 
-        void StartListener(string password);
-
         void Disconnect();
 
         void SendCommand(TorCommands command, string keyword);
+
+        void Authenticate(string password);
     }
 }
