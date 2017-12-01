@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace TorControlClientNet
 {
-    public class TorControlClientNet : ITorControlClientNet
+    public class TorControlClient : ITorControlClient
     {
         private string _ip;
         private int _port;
@@ -21,8 +21,11 @@ namespace TorControlClientNet
         public event EventHandler OnDisconnect;
         public event EventHandler OnBadAuthentication;
         public event EventHandler OnSuccessfullAuthentication;
+        public event EventHandler OnCommandOk;
+        public event EventHandler OnAsyncEvent;
+        public event EventHandler OnCommandData;
 
-        public TorControlClientNet(string ip,int port)
+        public TorControlClient(string ip,int port)
         {
             _ip = ip;
             _port = port;
@@ -68,16 +71,9 @@ namespace TorControlClientNet
 
             Task.Run(() => this.Read(_cancellationTokenSource.Token));
 
-            var data = System.Text.Encoding.ASCII.GetBytes(string.IsNullOrEmpty(password) ? "AUTHENTICATE" : $"AUTHENTICATE \"{password}\"" + Environment.NewLine);
-            if (_networkStream.CanWrite)
-            {
-                isAuthenticating = true;
-                _networkStream.Write(data, 0, data.Length);
-            }
-            else
-            {
-                throw new Exception("NetworkStream closed");
-            }
+            isAuthenticating = true;
+            var data = Encoding.ASCII.GetBytes(string.IsNullOrEmpty(password) ? TorCommands.AUTHENTICATE.ToString() : $"{TorCommands.AUTHENTICATE.ToString()} \"{password}\"" + Environment.NewLine);
+            writeToStream(data);
         }
 
         private void Read(CancellationToken token)
@@ -87,21 +83,59 @@ namespace TorControlClientNet
                 string line = "";
                 while ((line = reader.ReadLine()) != null && !token.IsCancellationRequested)
                 {
-                    if (line.Contains("250"))
+                    if (line.Contains(TorStatusCodes.Tor_Ok))
                     {
                         if(isAuthenticating)
                         {
                             OnSuccessfullAuthentication?.Invoke(this, new EventArgs());
                             isAuthenticating = false;
                         }
+                        else if(line.Contains("OK"))
+                        {
+                            OnCommandOk?.Invoke(this, new EventArgs());
+                        }
+                        else
+                        {
+                            OnCommandData?.Invoke(this, new TorEventArgs()
+                            {
+                                EventName = line,
+                                Values = new Dictionary<string, string>()
+                            });
+                        }
 
                     }
-                    else if(line.Contains("515 Bad authentication"))
+                    else if(line.Contains(TorStatusCodes.Tor_BadAuthentication))
                     {
                         OnBadAuthentication?.Invoke(this, new EventArgs());
                         isAuthenticating = false;
                     }
+                    else if(line.Contains(TorStatusCodes.Tor_AsynchronousEvent))
+                    {
+                        OnAsyncEvent?.Invoke(this, new TorEventArgs()
+                        {
+                            EventName = line,
+                            Values = new Dictionary<string, string>()
+                        });
+                    }
                 }
+            }
+        }
+
+        public void SendCommand(TorCommands command, string keyword = "")
+        {
+            var data = Encoding.ASCII.GetBytes($"{command.ToString()} {keyword}" + Environment.NewLine);
+            writeToStream(data);
+        }
+
+        private void writeToStream(byte[] data)
+        {
+            if (_networkStream.CanWrite)
+            {
+                _networkStream.Write(data, 0, data.Length);
+            }
+            else
+            {
+                throw new Exception("NetworkStream closed");
             }
         }
     }

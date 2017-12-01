@@ -41,9 +41,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="TorControlClientNet.cs" />
-    <Compile Include="ITorControlClientNet.cs" />
+    <Compile Include="TorCommands.cs" />
+    <Compile Include="TorControlClient.cs" />
+    <Compile Include="ITorControlClient.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TorEventArgs.cs" />
+    <Compile Include="TorStatusCodes.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
