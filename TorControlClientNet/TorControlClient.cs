@@ -123,6 +123,10 @@ namespace TorControlClientNet
             {
                 using (var reader = new StreamReader(_networkStream, Encoding.UTF8))
                 {
+                    var isMultiline = false;
+                    var keyword = "";
+                    var values = new List<string>();
+
                     string line = "";
                     while ((line = reader.ReadLine()) != null && !token.IsCancellationRequested)
                     {
@@ -136,15 +140,47 @@ namespace TorControlClientNet
                             }
                             else if (line.Contains("OK"))
                             {
-                                OnCommandOk?.Invoke(this, new EventArgs());
+                                OnCommandOk?.Invoke(this, new TorEventArgs() { EventName = "Ok" });
                             }
                             else
                             {
-                                OnCommandData?.Invoke(this, new TorEventArgs()
+                                //parse content
+                                var divider = line.Substring(3, 1);
+                                if(divider == "-")
                                 {
-                                    EventName = line,
-                                    Values = new Dictionary<string, string>()
-                                });
+                                    //single line
+                                    keyword = parseResponseSingle(values, line);
+                                }
+                                else if(divider == " ")
+                                {
+                                    //end line
+                                    //single line
+                                    keyword = parseResponseSingle(values, line);
+                                }
+                                else if(divider == "+")
+                                {
+                                    //multiline
+                                    isMultiline = true;
+                                    keyword = parseResponseSingle(values, line);
+                                }
+                                else
+                                {
+                                    if (line == ".")
+                                        isMultiline = false;
+
+                                    values.Add(line);
+                                }
+
+                                if (!isMultiline)
+                                {
+                                    OnCommandData?.Invoke(this, new TorEventArgs()
+                                    {
+                                        EventName = keyword,
+                                        Values = values
+                                    });
+
+                                    values = new List<string>();
+                                }
                             }
 
                         }
@@ -158,7 +194,7 @@ namespace TorControlClientNet
                             OnAsyncEvent?.Invoke(this, new TorEventArgs()
                             {
                                 EventName = line,
-                                Values = new Dictionary<string, string>()
+                                Values = new List<string>()
                             });
                         }
                     }
@@ -171,5 +207,13 @@ namespace TorControlClientNet
 
         }
 
+        private static string parseResponseSingle(List<string> values, string line)
+        {
+            var content = line.Substring(4, line.Length - 2);
+            var response = content.Split('=');
+
+            values.Add(response[1]);
+            return response[0];
+        }
     }
 }

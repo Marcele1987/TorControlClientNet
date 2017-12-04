@@ -10,6 +10,6 @@ namespace TorControlClientNet
     {
         public string EventName { get; set; }
 
-        public Dictionary<string,string> Values { get; set; }
+        public List<string> Values { get; set; }
     }
 }
