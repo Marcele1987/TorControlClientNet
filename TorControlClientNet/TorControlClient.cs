@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Sockets;
@@ -73,7 +74,7 @@ namespace TorControlClientNet
             startListener();
 
             _isAuthenticating = true;
-            var data = Encoding.ASCII.GetBytes(string.IsNullOrEmpty(password) ? TorCommands.AUTHENTICATE.ToString() : $"{TorCommands.AUTHENTICATE.ToString()} \"{password}\"" + Environment.NewLine);
+            var data = Encoding.ASCII.GetBytes(string.IsNullOrEmpty(password) ? TorCommands.AUTHENTICATE.ToString() + Environment.NewLine : $"{TorCommands.AUTHENTICATE.ToString()} \"{password}\"" + Environment.NewLine);
             writeToStream(data);
         }
 
@@ -130,89 +131,119 @@ namespace TorControlClientNet
                     string line = "";
                     while ((line = reader.ReadLine()) != null && !token.IsCancellationRequested)
                     {
-                        if (line.Contains(TorStatusCodes.Tor_Ok))
+                        try
                         {
-                            if (_isAuthenticating)
+                            if (line.checkStatusCode(TorStatusCodes.Tor_Ok))
                             {
-                                OnSuccessfullAuthentication?.Invoke(this, new EventArgs());
-                                _isAuthenticating = false;
-                                _isAuthenticated = true;
-                            }
-                            else if (line.Contains("OK"))
-                            {
-                                OnCommandOk?.Invoke(this, new TorEventArgs() { EventName = "Ok" });
-                            }
-                            else
-                            {
-                                //parse content
-                                var divider = line.Substring(3, 1);
-                                if(divider == "-")
+                                if (_isAuthenticating)
                                 {
-                                    //single line
-                                    keyword = parseResponseSingle(values, line);
+                                    OnSuccessfullAuthentication?.Invoke(this, new EventArgs());
+                                    _isAuthenticating = false;
+                                    _isAuthenticated = true;
                                 }
-                                else if(divider == " ")
+                                else if (line.Equals(TorStatusCodes.Tor_Ok + " OK"))
                                 {
-                                    //end line
-                                    //single line
-                                    keyword = parseResponseSingle(values, line);
-                                }
-                                else if(divider == "+")
-                                {
-                                    //multiline
-                                    isMultiline = true;
-                                    keyword = parseResponseSingle(values, line);
+                                    OnCommandOk?.Invoke(this, new TorEventArgs() { EventName = "Ok" });
                                 }
                                 else
                                 {
-                                    if (line == ".")
-                                        isMultiline = false;
-
-                                    values.Add(line);
-                                }
-
-                                if (!isMultiline)
-                                {
-                                    OnCommandData?.Invoke(this, new TorEventArgs()
-                                    {
-                                        EventName = keyword,
-                                        Values = values
-                                    });
-
-                                    values = new List<string>();
+                                    GetValues(ref isMultiline, ref keyword, ref values, line);
                                 }
                             }
-
-                        }
-                        else if (line.Contains(TorStatusCodes.Tor_BadAuthentication))
-                        {
-                            OnBadAuthentication?.Invoke(this, new EventArgs());
-                            _isAuthenticating = false;
-                        }
-                        else if (line.Contains(TorStatusCodes.Tor_AsynchronousEvent))
-                        {
-                            OnAsyncEvent?.Invoke(this, new TorEventArgs()
+                            else if (line.checkStatusCode(TorStatusCodes.Tor_BadAuthentication))
                             {
-                                EventName = line,
-                                Values = new List<string>()
-                            });
+                                OnBadAuthentication?.Invoke(this, new EventArgs());
+                                _isAuthenticating = false;
+                            }
+                            else if (line.checkStatusCode(TorStatusCodes.Tor_AsynchronousEvent))
+                            {
+                                OnAsyncEvent?.Invoke(this, new TorEventArgs()
+                                {
+                                    EventName = line,
+                                    Values = new List<string>()
+                                });
+                            }
+                            else
+                                GetValues(ref isMultiline, ref keyword, ref values, line);
+                        }
+                        catch (Exception exc)
+                        {
+                            Debug.WriteLine(exc.Message);
                         }
                     }
                 }
             }
             catch (Exception exc)
             {
+                Debug.WriteLine(exc);
                 _isListenerRunning = false;
             }
 
         }
 
+        private void GetValues(ref bool isMultiline, ref string keyword, ref List<string> values, string line)
+        {
+            if (isMultiline)
+            {
+                if (line == ".")
+                {
+                    isMultiline = false;
+                    OnCommandData?.Invoke(this, new TorEventArgs()
+                    {
+                        EventName = keyword,
+                        Values = values
+                    });
+
+                    values = new List<string>();
+                }
+                else
+                {
+                    values.Add(line);
+                }
+            }
+            else
+            {
+                //parse content
+                var divider = line.Substring(3, 1);
+                if (divider == "-")
+                {
+                    //single line
+                    keyword = parseResponseSingle(values, line);
+                }
+                else if (divider == " ")
+                {
+                    //end line
+                    //single line
+                    keyword = parseResponseSingle(values, line);
+                }
+                else if (divider == "+")
+                {
+                    //multiline
+                    isMultiline = true;
+                    keyword = parseResponseSingle(values, line);
+                }
+
+                if (!isMultiline)
+                {
+                    OnCommandData?.Invoke(this, new TorEventArgs()
+                    {
+                        EventName = keyword,
+                        Values = values
+                    });
+
+                    values = new List<string>();
+                }
+            }
+        }
+
         private static string parseResponseSingle(List<string> values, string line)
         {
-            var content = line.Substring(4, line.Length - 2);
+            var content = line.Substring(4, line.Length - 4);
             var response = content.Split('=');
 
-            values.Add(response[1]);
+            if (!String.IsNullOrEmpty(response[1]))
+                values.Add(response[1]);
+
             return response[0];
         }
     }
