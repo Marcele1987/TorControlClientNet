@@ -46,6 +46,7 @@
     <Compile Include="TorControlClient.cs" />
     <Compile Include="ITorControlClient.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TorControlLog.cs" />
     <Compile Include="TorEventArgs.cs" />
     <Compile Include="TorStatusCodes.cs" />
   </ItemGroup>

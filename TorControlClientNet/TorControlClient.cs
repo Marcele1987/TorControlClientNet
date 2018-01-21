@@ -29,6 +29,14 @@ namespace TorControlClientNet
         public event EventHandler OnAsyncEvent;
         public event EventHandler OnCommandData;
 
+        public bool IsAuthenticated
+        {
+            get
+            {
+                return _isAuthenticated;
+            }
+        }
+
         public TorControlClient(string ip, int port)
         {
             _ip = ip;
@@ -137,7 +145,15 @@ namespace TorControlClientNet
                             {
                                 if (_isAuthenticating)
                                 {
-                                    OnSuccessfullAuthentication?.Invoke(this, new EventArgs());
+                                    try
+                                    {
+                                        OnSuccessfullAuthentication?.Invoke(this, new EventArgs());
+                                    }
+                                    catch (Exception exc)
+                                    {
+                                        Debug.WriteLine(exc.Message); 
+                                    }
+                                    
                                     _isAuthenticating = false;
                                     _isAuthenticated = true;
                                 }
