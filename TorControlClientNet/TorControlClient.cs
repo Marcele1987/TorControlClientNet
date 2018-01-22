@@ -65,7 +65,7 @@ namespace TorControlClientNet
 
         public void Disconnect()
         {
-            if (_tcpClient?.Connected ?? false && _cancellationTokenSource != null)
+            if (_tcpClient?.Connected ?? false)
             {
                 var data = Encoding.ASCII.GetBytes("QUIT" + Environment.NewLine);
                 if (_networkStream.CanWrite)
@@ -136,7 +136,7 @@ namespace TorControlClientNet
                     var keyword = "";
                     var values = new List<string>();
 
-                    var line = "";
+                    string line;
                     while ((line = reader.ReadLine()) != null && !token.IsCancellationRequested)
                         try
                         {
