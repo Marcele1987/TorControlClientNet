@@ -1,13 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using TorControlClientNet.Constants;
 
-namespace TorControlClientNet
+namespace TorControlClientNet.Interfaces
 {
     public interface ITorControlClient
     {
+        #region Members
+
         event EventHandler OnConnect;
         event EventHandler OnDisconnect;
         event EventHandler OnBadAuthentication;
@@ -23,5 +22,7 @@ namespace TorControlClientNet
         void SendCommand(TorCommands command, string keyword);
 
         void Authenticate(string password);
+
+        #endregion
     }
 }
